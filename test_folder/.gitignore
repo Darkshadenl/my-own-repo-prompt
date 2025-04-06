@@ -1,0 +1,3 @@
+# Negeren in deze specifieke map
+*.tmp
+secret_data.txt 
