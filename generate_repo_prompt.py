@@ -17,6 +17,15 @@ from pathlib import Path
 import pyperclip
 import pathspec
 
+try:
+    import tiktoken
+
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    print("tiktoken not installed. Token count will not be available.", file=sys.stderr)
+    print("Install with: pip install tiktoken", file=sys.stderr)
+
 # Define set of allowed file extensions (case-insensitive)
 ALLOWED_EXTENSIONS = {
     ".css",
@@ -360,6 +369,21 @@ def generate_user_instructions():
     return f"<user_instructions>\n{placeholder}\n</user_instructions>"
 
 
+def count_tokens(text):
+    """Count the number of tokens in the text using tiktoken"""
+    if not TIKTOKEN_AVAILABLE:
+        return None
+
+    try:
+        # Use cl100k_base encoding (used by ChatGPT and GPT-4)
+        encoding = tiktoken.get_encoding("cl100k_base")
+        tokens = encoding.encode(text)
+        return len(tokens)
+    except Exception as e:
+        print(f"Error counting tokens: {e}", file=sys.stderr)
+        return None
+
+
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
@@ -406,6 +430,31 @@ def main():
     except Exception as e:
         print(f"\nFailed to copy to clipboard: {e}", file=sys.stderr)
         print("You may need to manually copy the prompt.")
+
+    # Count tokens if tiktoken is available
+    if TIKTOKEN_AVAILABLE:
+        token_count = count_tokens(prompt)
+        if token_count is not None:
+            print(f"\nToken count (using cl100k_base encoding): {token_count:,}")
+
+            # Add some context about token limits for common models
+            if token_count < 4096:
+                print("✅ Fits within GPT-3.5 context window (4K tokens)")
+            elif token_count < 8192:
+                print("✅ Fits within GPT-4 Turbo small context window (8K tokens)")
+                print("❌ Exceeds GPT-3.5 context window (4K tokens)")
+            elif token_count < 16384:
+                print("✅ Fits within Claude 3 Sonnet context window (16K tokens)")
+                print("✅ Fits within Claude 3 Haiku context window (16K tokens)")
+                print("❌ Exceeds GPT-4 Turbo small context window (8K tokens)")
+            elif token_count < 32768:
+                print("✅ Fits within GPT-4 Turbo medium context window (32K tokens)")
+                print("❌ Exceeds Claude 3 Sonnet/Haiku context window (16K tokens)")
+            elif token_count < 128000:
+                print("✅ Fits within Claude 3 Opus context window (128K tokens)")
+                print("❌ Exceeds GPT-4 Turbo medium context window (32K tokens)")
+            else:
+                print("❌ Exceeds Claude 3 Opus context window (128K tokens)")
 
     print(
         f"\nTotal files processed: {len([p for p in filtered_paths if Path(repo_path / p.lstrip('./')).is_file()])}"

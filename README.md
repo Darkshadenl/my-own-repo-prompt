@@ -13,7 +13,7 @@ The generated prompt is printed to the console and copied to the clipboard.
 2. Install the required dependencies:
 
 ```bash
-pip install pyperclip pathspec
+pip install pyperclip pathspec tiktoken
 ```
 
 Or use the requirements.txt file:
@@ -37,6 +37,8 @@ python generate_repo_prompt.py /path/to/your/repository
 - Only includes files with supported extensions
 - Generates a tree-like file map similar to the `tree` command
 - Copies the result to clipboard (if pyperclip is working in your environment)
+- Counts tokens in the generated prompt (if tiktoken is installed)
+- Provides feedback on which LLM models can handle the prompt size
 
 ### Output Format
 
