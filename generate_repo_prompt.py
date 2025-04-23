@@ -2,12 +2,14 @@
 """
 Repository Prompt Generator
 
-This script scans a given repository directory and generates a structured "repo prompt" containing
+This script scans one or more repository directories and generates a structured "repo prompt" containing
 a file map, file contents, and a placeholder for user instructions. The generated prompt is printed
 to the console and copied to the clipboard.
 
 Usage:
-    python generate_repo_prompt.py /path/to/repo
+    python generate_repo_prompt.py [/path/to/repo1 [/path/to/repo2 ...]]
+
+If no paths are provided, the current directory is used.
 """
 
 import os
@@ -16,6 +18,7 @@ import argparse
 from pathlib import Path
 import pyperclip
 import pathspec
+import json
 
 try:
     import tiktoken
@@ -324,13 +327,24 @@ def generate_file_map(repo_path, filtered_paths):
     for path in filtered_paths:
         add_path(path)
 
-    return "<file_map>\n" + "\n".join(lines) + "\n</file_map>"
+    # Create a dictionary structure where keys are paths
+    file_map = {}
+    # Add the root directory
+    file_map[f"./{root_dir_name}/"] = []
+
+    # Process each path to create a proper structure
+    for path in filtered_paths:
+        abs_path = repo_path / path.lstrip("./")
+        if abs_path.is_dir():
+            file_map[path] = []
+
+    return file_map
 
 
 def generate_file_contents(repo_path, filtered_paths):
     """Generate the file_contents section of the prompt"""
     repo_path = Path(repo_path).resolve()
-    content_blocks = []
+    file_contents = {}
 
     # Process only files, not directories
     file_paths = [
@@ -349,9 +363,9 @@ def generate_file_contents(repo_path, filtered_paths):
             with open(abs_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # Format the content block
-            block = f"File: {rel_path}\n```{lang_id}\n{content}\n```\n"
-            content_blocks.append(block)
+            # Format the content block with language ID
+            formatted_content = f"```{lang_id}\n{content}\n```"
+            file_contents[rel_path] = formatted_content
         except UnicodeDecodeError:
             print(
                 f"Warning: Skipping file {rel_path} due to encoding issues",
@@ -360,13 +374,13 @@ def generate_file_contents(repo_path, filtered_paths):
         except Exception as e:
             print(f"Error reading {rel_path}: {e}", file=sys.stderr)
 
-    return "<file_contents>\n" + "\n".join(content_blocks) + "\n</file_contents>"
+    return file_contents
 
 
 def generate_user_instructions():
     """Generate the user_instructions section of the prompt"""
-    placeholder = "<!-- Voeg hier je instructies voor de LLM toe -->"
-    return f"<user_instructions>\n{placeholder}\n</user_instructions>"
+    placeholder = "<!-- Add your instructions for the LLM here -->"
+    return placeholder
 
 
 def count_tokens(text):
@@ -385,80 +399,90 @@ def count_tokens(text):
 
 
 def main():
-    # Parse command-line arguments
+    """Main function to handle command line arguments and generate the prompt."""
     parser = argparse.ArgumentParser(
-        description="Generate a repository prompt for an LLM"
+        description="Generate a structured repository prompt for AI code assistance."
     )
-    parser.add_argument("repo_path", help="Path to the repository to scan")
+    parser.add_argument(
+        "repo_paths",
+        nargs="*",
+        default=[os.getcwd()],
+        help="Paths to repository directories (default: current directory)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        choices=["print", "clipboard", "json"],
+        default="json",
+        help="Output method (default: json)",
+    )
     args = parser.parse_args()
 
-    # Validate input path
-    repo_path = Path(args.repo_path).resolve()
-    if not repo_path.exists():
-        print(f"Error: Path {repo_path} does not exist", file=sys.stderr)
-        sys.exit(1)
-    if not repo_path.is_dir():
-        print(f"Error: Path {repo_path} is not a directory", file=sys.stderr)
-        sys.exit(1)
+    all_file_maps = {}
+    all_file_contents = {}
 
-    print(f"Scanning repository: {repo_path}")
+    # Ensure we have at least one repo path
+    if not args.repo_paths:
+        args.repo_paths = [os.getcwd()]
 
-    # Get filtered paths
-    filtered_paths = get_filtered_paths(repo_path)
+    # Process each repo
+    for repo_path in args.repo_paths:
+        repo_path = os.path.abspath(repo_path)
+        if not os.path.isdir(repo_path):
+            print(f"Error: {repo_path} is not a valid directory.", file=sys.stderr)
+            continue
 
-    if not filtered_paths:
-        print("Warning: No files found after filtering", file=sys.stderr)
+        print(f"Processing {repo_path}...", file=sys.stderr)
+        filtered_paths = get_filtered_paths(repo_path)
 
-    # Generate prompt sections
-    file_map = generate_file_map(repo_path, filtered_paths)
-    file_contents = generate_file_contents(repo_path, filtered_paths)
+        # Get file map and contents
+        repo_file_map = generate_file_map(repo_path, filtered_paths)
+        repo_file_contents = generate_file_contents(repo_path, filtered_paths)
+
+        # Merge into main dictionaries
+        all_file_maps.update(repo_file_map)
+        all_file_contents.update(repo_file_contents)
+
+    # Generate user instructions section
     user_instructions = generate_user_instructions()
 
-    # Combine sections
-    prompt = f"{file_map}\n\n{file_contents}\n\n{user_instructions}"
+    # Combine all parts into the final prompt
+    full_prompt = {}
 
-    # Print to stdout
-    print("\nGenerated Repository Prompt:")
-    print("=" * 50)
-    print(prompt)
-    print("=" * 50)
+    # Add file contents with metadata about type
+    for path, content in all_file_contents.items():
+        full_prompt[path] = {"content": content, "type": "file"}
 
-    # Copy to clipboard
-    try:
-        pyperclip.copy(prompt)
-        print("\nRepository prompt has been copied to your clipboard.")
-    except Exception as e:
-        print(f"\nFailed to copy to clipboard: {e}", file=sys.stderr)
-        print("You may need to manually copy the prompt.")
+    # Add directory structure
+    for path, children in all_file_maps.items():
+        if path.endswith("/"):
+            full_prompt[path] = {"children": children, "type": "directory"}
 
-    # Count tokens if tiktoken is available
+    # Add user instructions
+    full_prompt["user_instructions"] = {
+        "content": user_instructions,
+        "type": "instructions",
+    }
+
+    # Output according to the specified method
+    if args.output == "print":
+        print(json.dumps(full_prompt, indent=2))
+    elif args.output == "clipboard":
+        pyperclip.copy(json.dumps(full_prompt, indent=2))
+        print("Repository prompt copied to clipboard.", file=sys.stderr)
+    elif args.output == "json":
+        # For API use, print only the JSON output to stdout
+        print(json.dumps(full_prompt))
+
+    # Get token count if available
     if TIKTOKEN_AVAILABLE:
-        token_count = count_tokens(prompt)
-        if token_count is not None:
-            print(f"\nToken count (using cl100k_base encoding): {token_count:,}")
-
-            # Add some context about token limits for common models
-            if token_count < 4096:
-                print("✅ Fits within GPT-3.5 context window (4K tokens)")
-            elif token_count < 8192:
-                print("✅ Fits within GPT-4 Turbo small context window (8K tokens)")
-                print("❌ Exceeds GPT-3.5 context window (4K tokens)")
-            elif token_count < 16384:
-                print("✅ Fits within Claude 3 Sonnet context window (16K tokens)")
-                print("✅ Fits within Claude 3 Haiku context window (16K tokens)")
-                print("❌ Exceeds GPT-4 Turbo small context window (8K tokens)")
-            elif token_count < 32768:
-                print("✅ Fits within GPT-4 Turbo medium context window (32K tokens)")
-                print("❌ Exceeds Claude 3 Sonnet/Haiku context window (16K tokens)")
-            elif token_count < 128000:
-                print("✅ Fits within Claude 3 Opus context window (128K tokens)")
-                print("❌ Exceeds GPT-4 Turbo medium context window (32K tokens)")
-            else:
-                print("❌ Exceeds Claude 3 Opus context window (128K tokens)")
-
-    print(
-        f"\nTotal files processed: {len([p for p in filtered_paths if Path(repo_path / p.lstrip('./')).is_file()])}"
-    )
+        prompt_text = json.dumps(full_prompt, indent=2)
+        token_count = count_tokens(prompt_text)
+        print(f"\nToken count: {token_count}", file=sys.stderr)
+        print(
+            "Note: This is approximate and may vary slightly from the actual count.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

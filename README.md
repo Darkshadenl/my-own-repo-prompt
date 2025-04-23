@@ -1,6 +1,6 @@
 # Repository Prompt Generator
 
-This tool scans a repository and generates a structured prompt for language models (LLMs) containing:
+This tool scans one or more repositories and generates a structured prompt for language models (LLMs) containing:
 1. A file map (directory tree structure)
 2. File contents (for supported file types)
 3. A placeholder for user instructions
@@ -24,14 +24,25 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the script with a path to the repository you want to scan:
+Run the script with paths to the repositories you want to scan:
 
+```bash
+python generate_repo_prompt.py /path/to/repository1 [/path/to/repository2 ...]
+```
+
+You can scan a single repository:
 ```bash
 python generate_repo_prompt.py /path/to/your/repository
 ```
 
+Or multiple repositories at once:
+```bash
+python generate_repo_prompt.py /path/to/repo1 /path/to/repo2 /path/to/repo3
+```
+
 ### Features
 
+- Supports scanning multiple repositories at once
 - Respects `.gitignore` rules (using the pathspec library to parse gitignore patterns)
 - Skips common directories like `.git`, `node_modules`, etc.
 - Only includes files with supported extensions
@@ -72,7 +83,6 @@ file content here
 <user_instructions>
 <!-- Voeg hier je instructies voor de LLM toe -->
 </user_instructions>
-```
 
 ## Customization
 
