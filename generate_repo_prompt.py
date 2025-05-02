@@ -85,7 +85,7 @@ ALLOWED_EXTENSIONS = {
 }
 
 # Define directories to always skip
-SKIP_DIRS = {
+DEFAULT_SKIP_DIRS = {
     ".git",
     "__pycache__",
     "node_modules",
@@ -201,12 +201,24 @@ def load_gitignore_spec(repo_path):
     return pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, patterns)
 
 
-def get_filtered_paths(repo_path):
+def get_filtered_paths(repo_path, skip_dirs=None):
     """
     Recursively traverse the repository and return a filtered, sorted list of relative paths.
     Applies filtering based on skip directories, gitignore rules, and allowed extensions.
+
+    Args:
+        repo_path: Path to the repository
+        skip_dirs: Additional directory names to skip. These will be added to DEFAULT_SKIP_DIRS
+
+    Returns:
+        List of filtered paths
     """
     repo_path = Path(repo_path).resolve()
+
+    # Always include DEFAULT_SKIP_DIRS and add user-provided ones if any
+    dirs_to_skip = DEFAULT_SKIP_DIRS.copy()
+    if skip_dirs:
+        dirs_to_skip.update(skip_dirs)
 
     # Load gitignore specs
     try:
@@ -226,8 +238,8 @@ def get_filtered_paths(repo_path):
         if not path.exists():
             continue
 
-        # Skip if the path or any of its parents is in SKIP_DIRS
-        if any(part in SKIP_DIRS for part in path.parts):
+        # Skip if the path or any of its parents is in dirs_to_skip
+        if any(part in dirs_to_skip for part in path.parts):
             continue
 
         # Get relative path from repo root for gitignore matching
@@ -377,10 +389,19 @@ def generate_file_contents(repo_path, filtered_paths):
     return file_contents
 
 
-def generate_user_instructions():
-    """Generate the user_instructions section of the prompt"""
-    placeholder = "<!-- Add your instructions for the LLM here -->"
-    return placeholder
+def generate_user_instructions(custom_instructions=None):
+    """
+    Generate the user_instructions section of the prompt
+
+    Args:
+        custom_instructions: Optional custom instructions to use instead of placeholder
+
+    Returns:
+        String containing instructions
+    """
+    if custom_instructions:
+        return custom_instructions
+    return "<!-- Add your instructions for the LLM here -->"
 
 
 def count_tokens(text):
@@ -416,6 +437,21 @@ def main():
         default="json",
         help="Output method (default: json)",
     )
+    parser.add_argument(
+        "--output-file",
+        help="Output file path for JSON (default: repo_prompt.json)",
+        default="repo_prompt.json",
+    )
+    parser.add_argument(
+        "--ignore-folders",
+        nargs="+",
+        help="Additional folders to ignore",
+        default=[],
+    )
+    parser.add_argument(
+        "--user-instructions",
+        help="Custom instructions to include in the prompt",
+    )
     args = parser.parse_args()
 
     all_file_maps = {}
@@ -425,6 +461,9 @@ def main():
     if not args.repo_paths:
         args.repo_paths = [os.getcwd()]
 
+    # Combine default skip dirs with user-provided ones
+    skip_dirs = DEFAULT_SKIP_DIRS.union(set(args.ignore_folders))
+
     # Process each repo
     for repo_path in args.repo_paths:
         repo_path = os.path.abspath(repo_path)
@@ -433,7 +472,7 @@ def main():
             continue
 
         print(f"Processing {repo_path}...", file=sys.stderr)
-        filtered_paths = get_filtered_paths(repo_path)
+        filtered_paths = get_filtered_paths(repo_path, skip_dirs)
 
         # Get file map and contents
         repo_file_map = generate_file_map(repo_path, filtered_paths)
@@ -444,7 +483,7 @@ def main():
         all_file_contents.update(repo_file_contents)
 
     # Generate user instructions section
-    user_instructions = generate_user_instructions()
+    user_instructions = generate_user_instructions(args.user_instructions)
 
     # Combine all parts into the final prompt
     full_prompt = {}
@@ -471,8 +510,15 @@ def main():
         pyperclip.copy(json.dumps(full_prompt, indent=2))
         print("Repository prompt copied to clipboard.", file=sys.stderr)
     elif args.output == "json":
-        # For API use, print only the JSON output to stdout
-        print(json.dumps(full_prompt))
+        # Write JSON to file
+        output_path = args.output_file
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(full_prompt, f, indent=2)
+            print(f"Repository prompt written to {output_path}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error writing to {output_path}: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Get token count if available
     if TIKTOKEN_AVAILABLE:

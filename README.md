@@ -1,92 +1,83 @@
 # Repository Prompt Generator
 
-This tool scans one or more repositories and generates a structured prompt for language models (LLMs) containing:
-1. A file map (directory tree structure)
-2. File contents (for supported file types)
-3. A placeholder for user instructions
+A powerful tool to generate structured prompts for Large Language Models (LLMs) by analyzing your codebase. Perfect for getting high-quality, context-aware responses from AI assistants.
 
-The generated prompt is printed to the console and copied to the clipboard.
+## Features
+
+- 📁 Recursive repository scanning
+- 🎯 Smart file filtering based on extensions
+- 🚫 Gitignore-aware file exclusion
+- 📊 Token count estimation (with tiktoken)
+- 🎨 Syntax highlighting in generated prompts
+- 🔧 Customizable folder exclusions
+- 📝 Custom user instructions support
 
 ## Installation
 
-1. Ensure you have Python 3.6+ installed
-2. Install the required dependencies:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/repo-prompt.git
+cd repo-prompt
+```
 
+2. Install dependencies:
 ```bash
 pip install pyperclip pathspec tiktoken
 ```
 
-Or use the requirements.txt file:
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Usage
 
-Run the script with paths to the repositories you want to scan:
-
+Basic usage:
 ```bash
-python generate_repo_prompt.py /path/to/repository1 [/path/to/repository2 ...]
+python generate_repo_prompt.py [/path/to/repo1 [/path/to/repo2 ...]]
 ```
 
-You can scan a single repository:
+### Command Line Arguments
+
+- Repository paths (optional): One or more paths to repositories
+  - Default: Current directory
+- `--output` or `-o`: Output method
+  - Choices: `print`, `clipboard`, `json` (default)
+- `--ignore-folders`: Additional folders to ignore
+  - Example: `--ignore-folders tests cache temp`
+- `--user-instructions`: Custom instructions for the LLM
+  - Example: `--user-instructions "Please analyze the code structure"`
+
+### Examples
+
+1. Process current directory:
 ```bash
-python generate_repo_prompt.py /path/to/your/repository
+python generate_repo_prompt.py
 ```
 
-Or multiple repositories at once:
+2. Process specific repository with custom ignored folders:
 ```bash
-python generate_repo_prompt.py /path/to/repo1 /path/to/repo2 /path/to/repo3
+python generate_repo_prompt.py /path/to/repo --ignore-folders tests cache
 ```
 
-### Features
-
-- Supports scanning multiple repositories at once
-- Respects `.gitignore` rules (using the pathspec library to parse gitignore patterns)
-- Skips common directories like `.git`, `node_modules`, etc.
-- Only includes files with supported extensions
-- Generates a tree-like file map similar to the `tree` command
-- Copies the result to clipboard (if pyperclip is working in your environment)
-- Counts tokens in the generated prompt (if tiktoken is installed)
-- Provides feedback on which LLM models can handle the prompt size
-
-### Output Format
-
-The generated prompt has the following structure:
-
-```
-<file_map>
-root_dir_name/
-├── file1.ext
-├── dir1/
-│   ├── file2.ext
-│   └── file3.ext
-└── dir2/
-    └── file4.ext
-</file_map>
-
-<file_contents>
-File: ./file1.ext
-```language
-file content here
+3. Process multiple repositories with custom instructions:
+```bash
+python generate_repo_prompt.py /path/to/repo1 /path/to/repo2 --user-instructions "Analyze the differences between these codebases"
 ```
 
-File: ./dir1/file2.ext
-```language
-file content here
+4. Output to clipboard instead of JSON:
+```bash
+python generate_repo_prompt.py -o clipboard
 ```
 
-... more files ...
-</file_contents>
+## Output Format
 
-<user_instructions>
-<!-- Voeg hier je instructies voor de LLM toe -->
-</user_instructions>
+The tool generates a structured JSON output containing:
+- File map (directory structure)
+- File contents (with syntax highlighting)
+- User instructions
 
-## Customization
+For detailed information about the architecture and internal workings, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-You can modify the script to change:
-- The set of allowed file extensions (`ALLOWED_EXTENSIONS`)
-- Directories to skip (`SKIP_DIRS`)
-- Language mappings for syntax highlighting (`LANGUAGE_MAP`) 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details. 
